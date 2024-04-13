@@ -2,10 +2,13 @@ import requests
 import json
 import time
 from datetime import datetime, timedelta
+from typing import Dict, List
+from operator import itemgetter
+
 import logging
 logger = logging.getLogger(__name__)
 
-from prompt_templates import QUERY_WITH_CONTEXT_TEMPLATE, DEFAULT_SYSTEM_PROMPT
+from prompt_templates import DEFAULT_SYSTEM_PROMPT
 from conf import settings
 
 class YandexGPT:
@@ -23,10 +26,15 @@ class YandexGPT:
         self._update_iam_token()
 
         self._model_uri = f'gpt://{self.folder_id}/yandexgpt/{model_version}'
-        self.system_prompt = system_prompt
+        self._system_message = {
+            "role": "system",
+            "text": system_prompt
+        }
 
         self._completion_uri = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
         self._max_retries = 5
+
+        self._message_getter = itemgetter('role', 'text')
 
     def _update_iam_token(self):
         logger.debug('Updating Yandex IAM token.')
@@ -43,19 +51,16 @@ class YandexGPT:
         self._iam_token = response['iamToken']
         logger.debug(f'IAM token succesully updated: {self._iam_token[:15]} Expires at: {self._iam_expires_at}')
 
-    @staticmethod
-    def _get_model_input(prompt, context):
-        if not context:
-            return prompt
-        return QUERY_WITH_CONTEXT_TEMPLATE.format(question=prompt, context=context)
-
 
     def __call__(self,
-                 prompt: str,
-                 context: str | None = None,
+                 messages: List[Dict[str, str]] | str,
                  temperature: float = 0.5,
                  max_new_tokens: int = 1024
                 ):
+        if isinstance(messages, str):
+            messages = [{"role": "user", "text": messages}]
+        messages = [self._system_message] + [dict(zip(('role', 'text'), self._message_getter(message))) for message in messages]
+
         if datetime.utcnow() + timedelta(hours=1) > self._iam_expires_at:
                 self._update_iam_token()
 
@@ -65,6 +70,7 @@ class YandexGPT:
                 "x-folder-id": f"{self.folder_id}"
             }
         
+        
         body = {
           "modelUri": self._model_uri,
           "completionOptions": {
@@ -72,18 +78,9 @@ class YandexGPT:
             "temperature": temperature,
             "maxTokens": max_new_tokens
           },
-          "messages": [
-            {
-              "role": "system",
-              "text": self.system_prompt
-            },
-            {
-              "role": "user",
-              "text": self._get_model_input(prompt=prompt, context=context)
-            }
-          ]
+          "messages": messages
         }
-        logger.debug(f'Got query to YandexGPT:\n{body["messages"][-1]["text"]}')
+        logger.debug(f'Formed query to YandexGPT:\n{messages}')
 
         retries = 0
         while retries < self._max_retries:   

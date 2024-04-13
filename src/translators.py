@@ -45,10 +45,10 @@ class YandexTranslator:
             texts = [texts]
             
         headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self._iam_token}",
-                "x-folder-id": f"{self.folder_id}"
-            }
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self._iam_token}",
+            "x-folder-id": f"{self.folder_id}"
+        }
         
         translated_texts = []
         
