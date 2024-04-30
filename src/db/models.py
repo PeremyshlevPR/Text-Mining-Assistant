@@ -17,5 +17,7 @@ class User(Base):
 
     username: Mapped[str] = mapped_column(String, unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String)
+    password_salt: Mapped[str] = mapped_column(String)
+
     role: Mapped[str] = mapped_column(String(20))
     
