@@ -3,3 +3,7 @@ streamlit==1.32.2
 chromadb==0.4.24
 langchain-community==0.0.29
 together==1.0.1
+extra-streamlit-components==0.1.71
+sqlalchemy==2.0.29
+alembic==1.13.1
+PyJWT==2.8.0
