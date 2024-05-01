@@ -14,9 +14,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-_translator = YandexTranslator(settings.YANDEX_FOLDER_ID, settings.YANDEX_OAUTH_TOKEN)
-
-
 def get_vectorstore(persist_directory: str, embeddings: Embeddings):
     vectorstore = Chroma(persist_directory=persist_directory, embedding_function=embeddings)
     n_docs = len(vectorstore.get(include=["metadatas"])["ids"])
@@ -51,7 +48,7 @@ def get_relevant_docs(vectorstore, query, sources, k=3):
     return [doc for doc, score in response]
 
 
-def handle_user_input(messages, llm, vectorstore, sources, n_docs=3):
+def handle_user_input(messages, llm, vectorstore, translator, sources, n_docs=3):
     if sources:
         logger.info(f'Soures passed: {", ".join(sources)}')
 
@@ -60,7 +57,7 @@ def handle_user_input(messages, llm, vectorstore, sources, n_docs=3):
         docs = get_relevant_docs(vectorstore, query=query, sources=sources, k=n_docs)
         
         for i, doc in enumerate(docs):
-            docs[i].page_content = _translator.translate(doc.page_content, target='ru')[0]
+            docs[i].page_content = translator.translate(doc.page_content, target='ru')[0]
         context = '\n\n'.join([doc.page_content for doc in docs])
 
         logger.info(f'Documents succesfully retrieved from sources: {", ".join([doc.metadata["docname"] for doc in docs])}')
@@ -75,11 +72,11 @@ def handle_user_input(messages, llm, vectorstore, sources, n_docs=3):
     response = llm(messages=messages_to_llm)
     return {
         'llm_output': response,
-        'en_llm_output': _translator.translate(response, target='en')[0],
+        'en_llm_output': translator.translate(response, target='en')[0],
         'docs': docs
     }
 
-def show_chat_page(cookie_manager):
+def show_chat_page():
     if 'embeddings' not in st.session_state:
         logger.info('Initializing embeddings...')
         st.session_state.embeddings = TogetherEmbeddings(model=settings.EMBEDDING_MODEL, token=settings.TOGETHER_TOKEN)
@@ -99,6 +96,12 @@ def show_chat_page(cookie_manager):
         st.session_state.llm = YandexGPT(
             folder_id=settings.YANDEX_FOLDER_ID,
             oauth_token=settings.YANDEX_OAUTH_TOKEN
+        )
+
+    if 'translator' not in st.session_state:
+        logger.info('Initializing translator...')
+        st.session_state.translator = YandexTranslator(
+            settings.YANDEX_FOLDER_ID, settings.YANDEX_OAUTH_TOKEN
         )
 
     # Initialize sidebar
@@ -173,13 +176,14 @@ def show_chat_page(cookie_manager):
             st.write(prompt)
 
         with st.spinner('Обработка запроса...'):
-            en_prompt = _translator.translate(prompt, target='en')[0]
+            en_prompt = st.session_state.translator.translate(prompt, target='en')[0]
             st.session_state.messages.append({"role": "user", "text": prompt, "en_text": en_prompt})
 
             response = handle_user_input(
                 messages=st.session_state.messages[-5:],
                 llm=st.session_state.llm,
                 vectorstore=st.session_state.vectorstore,
+                translator=st.session_state.translator,
                 sources=st.session_state.active_books + st.session_state.active_articles
             )
             logger.info(f'Got response from assistant based on {len(response["docs"])} docs: {response["llm_output"]}')

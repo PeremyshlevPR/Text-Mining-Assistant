@@ -4,4 +4,4 @@ from sqlalchemy.orm import sessionmaker
 from conf import settings
 
 engine = create_engine(settings.DB_URL)
-Session = sessionmaker(engine)
+Session = sessionmaker(engine, expire_on_commit=False)

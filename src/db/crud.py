@@ -21,6 +21,7 @@ def create_user(username: str, password: str, role: Literal["user", "admin"] = "
             role=role
         )
         session.add(user)
+        session.commit()
         logger.info(f'User {username} successfully inserted to database. id = {user.id}')
     return user
 
@@ -29,8 +30,7 @@ def get_users(return_one=True, **kwargs):
         result = session.scalars(
             select(models.User).filter_by(**kwargs)
         )
+        result = result.first() if return_one else result.all()
         
-    if return_one:
-        return result.first()
-    return result.all()
+    return result
     

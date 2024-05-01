@@ -3,9 +3,14 @@ import extra_streamlit_components as stx
 from db import models
 from db.crud import get_users, create_user
 from sqlalchemy.exc import IntegrityError
-
+from streamlit_router import StreamlitRouter
 import utils
-from . import set_stage, Stage
+import re
+import time
+
+import logging
+logger = logging.getLogger(__name__)
+
 
 def authenticate(username: str, password: str) -> str:
     if user := get_users(return_one=True, username=username):
@@ -16,17 +21,11 @@ def authenticate(username: str, password: str) -> str:
     return None
         
 
-def register(username: str, password: str) -> models.User:
-    try:
-        return create_user(username=username, password=password, role="user")
-    except IntegrityError:
-        return None
-
-def show_login_page(cookie_manager: stx.CookieManager):
+def show_login_page(router: StreamlitRouter):
     st.title("Авторизация")
 
-    username = st.text_input("Логин")
-    password = st.text_input("Пароль", type="password")
+    username = st.text_input(placeholder="Логин")
+    password = st.text_input(placeholder="Пароль", type="password")
 
     login_button = st.button("Войти")
 
@@ -34,8 +33,13 @@ def show_login_page(cookie_manager: stx.CookieManager):
         if token := authenticate(username, password):
             st.success("Успешная аутентификация!")
             st.session_state.token = token
-            cookie_manager.set("token", token)
-            set_stage(Stage.chat)
+            st.session_state.cookies["token"] = token
+            st.session_state.cookies.save()
+
+            logger.info(f'User {username} successfully authentificated')
+            logger.info(f'Cookies: {st.session_state.cookies}')
+
+            router.redirect(*router.build("chat_page_with_validation"))
         else:
             st.error("Ошибка аутентификации. Пожалуйста, проверьте учетные данные.")
 
@@ -43,10 +47,21 @@ def show_login_page(cookie_manager: stx.CookieManager):
     register_button = st.button("Регистрация")
 
     if register_button:
-        set_stage(Stage.registration)
+        if not password:
+
+        router.redirect(*router.build("show_registratioin_page"))
 
 
-def show_registratioin_page(cookie_manager: stx.CookieManager):
+def get_password_errors(password):
+    errors = []
+    if len(password) < 8:
+        errors.append("Пароль должен содержать не менее 8 символов.")
+    if not re.search(r"\d", password):
+        errors.append("Пароль должен содержать хотя бы одну цифру.")
+    return errors
+
+
+def show_registratioin_page(router: StreamlitRouter):
     st.title("Регистрация")
     username = st.text_input("Введите логин")
     password = st.text_input("Введите пароль", type="password")
@@ -57,17 +72,21 @@ def show_registratioin_page(cookie_manager: stx.CookieManager):
     register_button  = col2.button("Зарегистрироваться")
 
     if return_button:
-        set_stage(Stage.auth)
+        router.redirect(*router.build("show_login_page"))
     
     if register_button:
-        if password == confirm_password:
-            if user := register(username, password):
-                token = utils.issue_token(user_id=user.id, role=user.role)
-
-                st.session_state.token = token
-                cookie_manager.set("token", token)
-                set_stage(Stage.chat)
-            else:
-                st.error("Ошибка регистрации. Попробуйте снова.")
+        if user := get_users(return_one=True, username=username):
+            st.error(f'Пользователь с таким именем уже зарегистрирован, попробуйте другое')
         else:
-            st.error("Пароли не совпадают.")
+            if not (errors := get_password_errors(password)):
+                if password != confirm_password:
+                    st.error("Пароли не совпадают")
+                else:
+                    user = create_user(username=username, password=password, role="user")
+                    token = utils.issue_token(user_id=user.id, role=user.role)
+
+                    st.session_state.token = token
+                    st.session_state.cookies["token"] = token
+                    router.redirect(*router.build("chat_page_with_validation"))
+            else:
+                st.error("\n".join(errors))
