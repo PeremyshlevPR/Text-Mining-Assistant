@@ -47,8 +47,6 @@ def show_login_page(router: StreamlitRouter):
     register_button = st.button("Регистрация")
 
     if register_button:
-        if not password:
-
         router.redirect(*router.build("show_registratioin_page"))
 
 
